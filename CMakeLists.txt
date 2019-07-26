@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 2.8)
 project( lan_vid_pseudostream )
+
+set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS} -pthread")
+
 SET(OpenCV_DIR /home/chenyuan/3rdparty/opencv-3.2.0/build)
 find_package( OpenCV REQUIRED )
 add_executable( server Server.cpp PracticalSocket.cpp )

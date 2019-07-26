@@ -21,6 +21,7 @@
 #include "PracticalSocket.h"      // For UDPSocket and SocketException
 #include <iostream>               // For cout and cerr
 #include <cstdlib>                // For atoi()
+#include <chrono>
 
 #define BUF_LEN 65540 // Larger than maximum UDP packet size
 
@@ -47,14 +48,14 @@ int main(int argc, char * argv[]) {
         ibuf[0] = 0;
         sock.sendTo(ibuf, sizeof(int), servAddress, servPort);
 
-
-
         char buffer[BUF_LEN]; // Buffer for echo string
         int recvMsgSize; // Size of received message
         string sourceAddress; // Address of datagram source
         unsigned short sourcePort; // Port of datagram source
 
-        clock_t last_cycle = clock();
+
+        std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+        std::chrono::high_resolution_clock::time_point end;
 
         while (1) {
             // Block until receive message from a client
@@ -77,6 +78,7 @@ int main(int argc, char * argv[]) {
             cout << "Received packet from " << sourceAddress << ":" << sourcePort << endl;
 
             Mat rawData = Mat(1, PACK_SIZE * total_pack, CV_8UC1, longbuf);
+            //std::cout<<rawData<<std::endl;
             Mat frame = imdecode(rawData, CV_LOAD_IMAGE_COLOR);
             if (frame.size().width == 0) {
                 cerr << "decode failure!" << endl;
@@ -86,13 +88,13 @@ int main(int argc, char * argv[]) {
             free(longbuf);
 
             waitKey(1);
-            clock_t next_cycle = clock();
-            double duration = (next_cycle - last_cycle) / (double) CLOCKS_PER_SEC;
-            cout << "\teffective FPS:" << (1 / duration) << " \tkbps:" << (PACK_SIZE * total_pack / duration / 1024 * 8)
-                 << endl;
 
-            cout << next_cycle - last_cycle;
-            last_cycle = next_cycle;
+            end = std::chrono::high_resolution_clock::now();
+            auto cost = (int) std::chrono::duration_cast<std::chrono::milliseconds>(
+                    end - start).count();
+            cout << "effective FPS:" << 1.0/(cost/1000.0) << " \tkbps:" << (PACK_SIZE * total_pack / (cost/1000.0) / 1024 * 8)
+                 << endl;
+            start = end;
 
         }
     } catch (SocketException & e) {

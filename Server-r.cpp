@@ -21,16 +21,19 @@
 #include "PracticalSocket.h" // For UDPSocket and SocketException
 #include <iostream>          // For cout and cerr
 #include <cstdlib>           // For atoi()
+#include <chrono>
 
 #define BUF_LEN 65540 // Larger than maximum UDP packet size
 
 #include "opencv2/opencv.hpp"
+
 using namespace cv;
 using namespace std;
+
 #include "config.h"
 
 
-int main(int argc, char * argv[]) {
+int main(int argc, char *argv[]) {
 
     if (argc != 2) { // Test for correct number of parameters
         cerr << "Usage: " << argv[0] << " <Server Port>" << endl;
@@ -52,52 +55,55 @@ int main(int argc, char * argv[]) {
         } while (recvMsgSize > sizeof(int));
 
         string foreignAddress = sourceAddress;
-        //string foreignAddress = "127.0.0.1";
         unsigned short foreignPort = sourcePort;
 
-        int jpegqual =  ENCODE_QUALITY; // Compression Parameter
+        int jpegqual = ENCODE_QUALITY; // Compression Parameter
 
         Mat frame, send;
-        vector < uchar > encoded;
+        vector<uchar> encoded;
         VideoCapture cap(0); // Grab the camera
         cap.set(CV_CAP_PROP_FRAME_HEIGHT, 360);
         cap.set(CV_CAP_PROP_FRAME_WIDTH, 640);
-        namedWindow("send", CV_WINDOW_AUTOSIZE);
+        //namedWindow("send", CV_WINDOW_AUTOSIZE);
         if (!cap.isOpened()) {
             cerr << "OpenCV Failed to open camera";
             exit(1);
         }
 
-        clock_t last_cycle = clock();
+        std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
+        std::chrono::high_resolution_clock::time_point end;
+
         while (1) {
             cap >> frame;
-            if(frame.size().width==0)continue;//simple integrity check; skip erroneous data...
+            if (frame.size().width == 0)continue;//simple integrity check; skip erroneous data...
             resize(frame, send, Size(FRAME_WIDTH, FRAME_HEIGHT), 0, 0, INTER_LINEAR);
-            vector < int > compression_params;
+            vector<int> compression_params;
             compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
             compression_params.push_back(jpegqual);
 
             imencode(".jpg", send, encoded, compression_params);
-            imshow("send", send);
-            int total_pack = 1 + (encoded.size() - 1) / PACK_SIZE;
 
+            //imshow("send", send);
+            int total_pack = 1 + (encoded.size() - 1) / PACK_SIZE;
+            //Mat rawData = Mat(1, PACK_SIZE * total_pack, CV_8UC1, encoded.data());
+            //std::cout<<rawData<<std::endl;
             int ibuf[1];
             ibuf[0] = total_pack;
             sock.sendTo(ibuf, sizeof(int), foreignAddress, foreignPort);
 
             for (int i = 0; i < total_pack; i++)
-                sock.sendTo( & encoded[i * PACK_SIZE], PACK_SIZE, foreignAddress, foreignPort);
+                sock.sendTo(&encoded[i * PACK_SIZE], PACK_SIZE, foreignAddress, foreignPort);
 
-            waitKey(FRAME_INTERVAL);
+            //waitKey(FRAME_INTERVAL);
 
-            clock_t next_cycle = clock();
-            double duration = (next_cycle - last_cycle) / (double) CLOCKS_PER_SEC;
-            cout << "\teffective FPS:" << (1 / duration) << " \tkbps:" << (PACK_SIZE * total_pack / duration / 1024 * 8) << endl;
-
-            cout << next_cycle - last_cycle;
-            last_cycle = next_cycle;
+            end = std::chrono::high_resolution_clock::now();
+            auto cost = (int) std::chrono::duration_cast<std::chrono::milliseconds>(
+                    end - start).count();
+            cout << "effective FPS:" << 1.0/(cost/1000.0) << " \tkbps:" << (PACK_SIZE * total_pack / (cost/1000.0) / 1024 * 8)
+                 << endl;
+            start = end;
         }
-    } catch (SocketException & e) {
+    } catch (SocketException &e) {
         cerr << e.what() << endl;
         exit(1);
     }
