@@ -45,6 +45,8 @@ int main(int argc, char * argv[]) {
         Mat frame, send;
         vector < uchar > encoded;
         VideoCapture cap(0); // Grab the camera
+        cap.set(CV_CAP_PROP_FRAME_HEIGHT, 360);
+        cap.set(CV_CAP_PROP_FRAME_WIDTH, 640);
         namedWindow("send", CV_WINDOW_AUTOSIZE);
         if (!cap.isOpened()) {
             cerr << "OpenCV Failed to open camera";

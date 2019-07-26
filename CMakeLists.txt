@@ -1,7 +1,13 @@
 cmake_minimum_required(VERSION 2.8)
 project( lan_vid_pseudostream )
+SET(OpenCV_DIR /home/chenyuan/3rdparty/opencv-3.2.0/build)
 find_package( OpenCV REQUIRED )
 add_executable( server Server.cpp PracticalSocket.cpp )
 target_link_libraries( server ${OpenCV_LIBS} )
 add_executable( client Client.cpp PracticalSocket.cpp )
 target_link_libraries( client ${OpenCV_LIBS} )
+
+add_executable( server-r Server-r.cpp PracticalSocket.cpp )
+target_link_libraries( server-r ${OpenCV_LIBS} )
+add_executable( client-r Client-r.cpp PracticalSocket.cpp )
+target_link_libraries( client-r ${OpenCV_LIBS} )
