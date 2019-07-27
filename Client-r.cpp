@@ -32,7 +32,7 @@ using namespace std;
 
 
 int main(int argc, char * argv[]) {
-    if ((argc < 3) || (argc > 3)) { // Test for correct number of arguments
+    if ((argc < 4) || (argc > 4)) { // Test for correct number of arguments
         cerr << "Usage: " << argv[0] << " <Server> <Server Port>\n";
         exit(1);
     }
@@ -44,9 +44,9 @@ int main(int argc, char * argv[]) {
     try {
         UDPSocket sock;
 
-        int ibuf[1];
-        ibuf[0] = 0;
-        sock.sendTo(ibuf, sizeof(int), servAddress, servPort);
+        char ibuf[1];
+        ibuf[0] = *argv[3];
+        sock.sendTo(ibuf, sizeof(uchar), servAddress, servPort);
 
         char buffer[BUF_LEN]; // Buffer for echo string
         int recvMsgSize; // Size of received message
@@ -92,7 +92,7 @@ int main(int argc, char * argv[]) {
             end = std::chrono::high_resolution_clock::now();
             auto cost = (int) std::chrono::duration_cast<std::chrono::milliseconds>(
                     end - start).count();
-            cout << "effective FPS:" << 1.0/(cost/1000.0) << " \tkbps:" << (PACK_SIZE * total_pack / (cost/1000.0) / 1024 * 8)
+            cout << "effective FPS:" << 1.0/(cost/1000.0) << " \tkB/s:" << (PACK_SIZE * total_pack / (cost/1000.0) / 1024)
                  << endl;
             start = end;
 
