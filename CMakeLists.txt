@@ -14,3 +14,8 @@ add_executable( server-r Server-r.cpp PracticalSocket.cpp )
 target_link_libraries( server-r ${OpenCV_LIBS} )
 add_executable( client-r Client-r.cpp PracticalSocket.cpp )
 target_link_libraries( client-r ${OpenCV_LIBS} )
+
+
+link_directories("/home/chenyuan/3rdparty/openpose/build/src/openpose")
+add_executable( server-d Server-D.cpp PracticalSocket.cpp ServDelegate.cpp)
+target_link_libraries( server-d ${OpenCV_LIBS} openpose gflags)

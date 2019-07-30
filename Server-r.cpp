@@ -60,10 +60,8 @@ int main(int argc, char *argv[]) {
                 unsigned short sourcePort; // Port of datagram source
                 // Block until receive message from a client
                 do {
-                    recvMsgSize = sock.recvFrom(buffer, BUF_LEN, sourceAddress, sourcePort);
+                    recvMsgSize = sock.recvFrom(buffer, BUF_LEN, foreignAddress, foreignPort);
                 } while (recvMsgSize > sizeof(int));
-                foreignAddress = sourceAddress;
-                foreignPort = sourcePort;
             }
         });
 
