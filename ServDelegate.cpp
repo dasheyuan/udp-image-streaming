@@ -40,41 +40,83 @@ void display(const std::shared_ptr<std::vector<std::shared_ptr<op::Datum>>> &dat
     }
 }
 
-Machine::Machine() : current_(new DownState()) {
-    std::cout << "DownState" << std::endl;
-}
 
-Machine::~Machine() {
-    delete current_;
-}
+void configureWrapper(op::Wrapper &opWrapper) {
+    try {
+        // Configuring OpenPose
 
-void Machine::run() {
-    current_->handle(this);
-}
+        // logging_level
+        op::check(0 <= FLAGS_logging_level && FLAGS_logging_level <= 255, "Wrong logging_level value.",
+                  __LINE__, __FUNCTION__, __FILE__);
+        op::ConfigureLog::setPriorityThreshold((op::Priority) FLAGS_logging_level);
+        op::Profiler::setDefaultX(FLAGS_profile_speed);
+
+        // Applying user defined configuration - GFlags to program variables
+
+        // cameraSize
+        const auto cameraSize = op::flagsToPoint(FLAGS_camera_resolution, "-1x-1");
+        // outputSize
+        const auto outputSize = op::flagsToPoint(FLAGS_output_resolution, "-1x-1");
+        // netInputSize
+        const auto netInputSize = op::flagsToPoint(FLAGS_net_resolution, "-1x368");
+        // poseMode
+        const auto poseMode = op::flagsToPoseMode(FLAGS_body);
+        // poseModel
+        const auto poseModel = op::flagsToPoseModel(FLAGS_model_pose);
+        //number_people_max
+        const auto number_people_max = 1;
+
+        // JSON saving
+        if (!FLAGS_write_keypoint.empty())
+            op::log("Flag `write_keypoint` is deprecated and will eventually be removed."
+                    " Please, use `write_json` instead.", op::Priority::Max);
+        // keypointScaleMode
+        const auto keypointScaleMode = op::flagsToScaleMode(FLAGS_keypoint_scale);
+        // heatmaps to add
+        const auto heatMapTypes = op::flagsToHeatMaps(FLAGS_heatmaps_add_parts, FLAGS_heatmaps_add_bkg,
+                                                      FLAGS_heatmaps_add_PAFs);
+        const auto heatMapScaleMode = op::flagsToHeatMapScaleMode(FLAGS_heatmaps_scale);
+        // >1 camera view?
+        const auto multipleView = (FLAGS_3d || FLAGS_3d_views > 1 || FLAGS_flir_camera);
+        // Face and hand detectors
+        const auto faceDetector = op::flagsToDetector(FLAGS_face_detector);
+        const auto handDetector = op::flagsToDetector(FLAGS_hand_detector);
+        // Enabling Google Logging
+        const bool enableGoogleLogging = true;
+
+        // Initializing the user custom classes
+        // GUI (Display)
+        //auto wUserOutput = std::make_shared<WUserOutput>();
+        // Add custom processing
+        const auto workerOutputOnNewThread = true;
+        //opWrapper.setWorker(op::WorkerType::Output, wUserOutput, workerOutputOnNewThread);
+
+        // Pose configuration (use WrapperStructPose{} for default and recommended configuration)
+        const op::WrapperStructPose wrapperStructPose{
+                poseMode, netInputSize, outputSize, keypointScaleMode, FLAGS_num_gpu, FLAGS_num_gpu_start,
+                FLAGS_scale_number, (float) FLAGS_scale_gap, op::flagsToRenderMode(FLAGS_render_pose, multipleView),
+                poseModel, !FLAGS_disable_blending, (float) FLAGS_alpha_pose, (float) FLAGS_alpha_heatmap,
+                FLAGS_part_to_show, FLAGS_model_folder, heatMapTypes, heatMapScaleMode, FLAGS_part_candidates,
+                (float) FLAGS_render_threshold, number_people_max, FLAGS_maximize_positives, FLAGS_fps_max,
+                FLAGS_prototxt_path, FLAGS_caffemodel_path, (float) FLAGS_upsampling_ratio, enableGoogleLogging};
+        opWrapper.configure(wrapperStructPose);
 
 
-void UpState::handle(Machine *m) {
 
-    std::vector<float> points = m->getKeypoints();
-    points.at(4);
-    if (points.at(1) > 0 && points.at(3) > 0 && points.at(1) < points.at(3)) {
-        m->setCurrent(new DownState());
-        delete this;
+        // No GUI. Equivalent to: opWrapper.configure(op::WrapperStructGui{});
+        // Set to single-thread (for sequential processing and/or debugging and/or reducing latency)
+        //if (FLAGS_disable_multi_thread)
+        //opWrapper.disableMultiThreading();
+    }
+    catch (const std::exception &e) {
+        op::error(e.what(), __LINE__, __FUNCTION__, __FILE__);
     }
 }
 
-void DownState::handle(Machine *m) {
-    std::vector<float> points = m->getKeypoints();
-    if (points.at(1) > 0 && points.at(3) > 0 && points.at(1) > points.at(3)) {
-        m->setCurrent(new UpState());
-        //server1.send("{\"cmd\":\"yes\"}");
-        cout << m->count_++ << endl;
-        delete this;
-    }
-}
 
 ServDelegate::ServDelegate() {
     sock_.setLocalPort(PORT);
+    configureWrapper(opWrapper);
     opWrapper.start();
 }
 
@@ -133,9 +175,9 @@ void ServDelegate::sendHandle() {
     Mat frame, send, imageToProcess;
     vector<uchar> encoded;
     VideoCapture cap("../test2.mp4"); // Grab the camera
-
-    //cap.set(CV_CAP_PROP_FRAME_HEIGHT, 360);
-    //cap.set(CV_CAP_PROP_FRAME_WIDTH, 640);
+    //VideoCapture cap(0);
+    cap.set(CV_CAP_PROP_FRAME_HEIGHT, 360);
+    cap.set(CV_CAP_PROP_FRAME_WIDTH, 640);
 
     int fps = cap.get(CV_CAP_PROP_FPS);
     int frames_count = cap.get(CV_CAP_PROP_FRAME_COUNT);
@@ -151,11 +193,13 @@ void ServDelegate::sendHandle() {
     while (true) {
         while (ready) {
             cap >> imageToProcess;
-            auto datumProcessed = opWrapper.emplaceAndPop(imageToProcess);
+            if(imageToProcess.empty()) continue;
+            frame = imageToProcess(Rect(imageToProcess.cols/4,0,imageToProcess.rows,imageToProcess.rows));
+            auto datumProcessed = opWrapper.emplaceAndPop(frame);
             if (datumProcessed != nullptr) {
                 //TODO
                 printKeypoints(datumProcessed);
-                frame = datumProcessed->at(0)->cvOutputData.clone();
+                send = datumProcessed->at(0)->cvOutputData.clone();
                 if (!FLAGS_no_display)
                     display(datumProcessed);
 
@@ -168,8 +212,8 @@ void ServDelegate::sendHandle() {
                 count = 0;
             }
             count++;
-            if (frame.size().width == 0)continue;//simple integrity check; skip erroneous data...
-            resize(frame, send, Size(FRAME_WIDTH, FRAME_HEIGHT), 0, 0, INTER_LINEAR);
+            //if (frame.size().width == 0)continue;//simple integrity check; skip erroneous data...
+            //resize(frame, send, Size(FRAME_WIDTH, FRAME_HEIGHT), 0, 0, INTER_LINEAR);
             vector<int> compression_params;
             compression_params.push_back(CV_IMWRITE_JPEG_QUALITY);
             compression_params.push_back(jpegqual);
@@ -190,16 +234,16 @@ void ServDelegate::printKeypoints(const std::shared_ptr<std::vector<std::shared_
 
             std::vector<float> keypoints;
             for (auto person = 0; person < poseKeypoints.getSize(0); person++) {
-//                keypoints.push_back(poseKeypoints[{0, 1, 0}]);
-//                keypoints.push_back(poseKeypoints[{0, 1, 1}]);//Neck
-//                keypoints.push_back(poseKeypoints[{0, 2, 0}]);
-//                keypoints.push_back(poseKeypoints[{0, 2, 1}]);//RShoulder
-                keypoints.push_back(poseKeypoints[{0, 3, 0}]);//0
-                keypoints.push_back(poseKeypoints[{0, 3, 1}]);//RElbow 1
-                keypoints.push_back(poseKeypoints[{0, 4, 0}]);// 2
-                keypoints.push_back(poseKeypoints[{0, 4, 1}]);//RWrist 3
-                keypoints.push_back(poseKeypoints[{0, 7, 0}]);// 4
-                keypoints.push_back(poseKeypoints[{0, 7, 1}]);//LWrist 5
+                keypoints.push_back(poseKeypoints[{0, 1, 0}]);//0
+                keypoints.push_back(poseKeypoints[{0, 1, 1}]);//Neck 1
+                keypoints.push_back(poseKeypoints[{0, 2, 0}]);//2
+                keypoints.push_back(poseKeypoints[{0, 2, 1}]);//RShoulder //3
+                keypoints.push_back(poseKeypoints[{0, 3, 0}]);//4
+                keypoints.push_back(poseKeypoints[{0, 3, 1}]);//RElbow 5
+                keypoints.push_back(poseKeypoints[{0, 4, 0}]);// 6
+                keypoints.push_back(poseKeypoints[{0, 4, 1}]);//RWrist 7
+                keypoints.push_back(poseKeypoints[{0, 7, 0}]);// 8
+                keypoints.push_back(poseKeypoints[{0, 7, 1}]);//LWrist 9
                 fsm_.setKeypoints(keypoints);
                 fsm_.run();
             }
